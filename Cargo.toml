@@ -1,0 +1,36 @@
+[package]
+name = "recall"
+version = "0.1.0"
+edition = "2021"
+description = "Search and resume Claude Code and Codex CLI conversations"
+
+[dependencies]
+# TUI
+ratatui = "0.29"
+crossterm = { git = "https://github.com/nornagon/crossterm", branch = "nornagon/color-query", features = ["event-stream"] }
+
+# Search
+tantivy = "0.22"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Utilities
+dirs = "5"
+walkdir = "2"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+thiserror = "1"
+arboard = "3"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
