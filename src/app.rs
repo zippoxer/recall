@@ -193,8 +193,7 @@ impl App {
         match &self.search_scope {
             SearchScope::Everything => None,
             SearchScope::Folder(path) => {
-                // Handle both Unix (/) and Windows (\) path separators
-                path.rsplit(['/', '\\']).next()
+                path.rsplit(std::path::MAIN_SEPARATOR).next()
             }
         }
     }
@@ -226,8 +225,7 @@ impl App {
         }
 
         // Otherwise show prefix/.../<last_dir>
-        // Handle both Unix (/) and Windows (\) path separators
-        let last_component = path.rsplit(['/', '\\']).next().unwrap_or(path);
+        let last_component = path.rsplit(std::path::MAIN_SEPARATOR).next().unwrap_or(path);
         let prefix = if display_path.starts_with('~') { "~" } else { "" };
         Some(format!("{}/.../{}", prefix, last_component))
     }
