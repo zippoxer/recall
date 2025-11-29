@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::app::{App, SearchScope};
 use crate::session::{Role, SessionSource};
 use crate::theme::Theme;
 use ratatui::{
@@ -54,19 +54,24 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         ])
         .split(main_layout[2]);
 
-    // Two-pane layout: 40% results, 2 space padding, 60% preview
-    let content_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(40),
-            Constraint::Length(2), // Padding between panes
-            Constraint::Percentage(60),
-        ])
-        .split(content_with_padding[1]);
+    // When no results, use full width for the hint message
+    if app.results.is_empty() {
+        render_results_list(frame, app, content_with_padding[1]);
+    } else {
+        // Two-pane layout: 40% results, 2 space padding, 60% preview
+        let content_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(40),
+                Constraint::Length(2), // Padding between panes
+                Constraint::Percentage(60),
+            ])
+            .split(content_with_padding[1]);
 
-    render_results_list(frame, app, content_layout[0]);
-    // content_layout[1] is the padding space - left empty
-    render_preview(frame, app, content_layout[2]);
+        render_results_list(frame, app, content_layout[0]);
+        // content_layout[1] is the padding space - left empty
+        render_preview(frame, app, content_layout[2]);
+    }
 
     // Add horizontal padding to status bar
     let status_with_padding = Layout::default()
@@ -152,10 +157,20 @@ fn render_results_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let available_width = area.width.saturating_sub(2) as usize;
 
     if app.results.is_empty() {
-        if !app.query.is_empty() {
+        // Show hint to search everywhere if scoped and no results
+        let is_scoped = !matches!(app.search_scope, SearchScope::Everything);
+        if is_scoped {
+            let prefix = if app.query.is_empty() { "Nothing here." } else { "No results." };
+            let hint = Line::from(vec![
+                Span::styled(format!(" {} Press ", prefix), Style::default().fg(t.snippet_fg)),
+                Span::styled(" / ", Style::default().bg(t.keycap_bg)),
+                Span::styled(" to search everywhere.", Style::default().fg(t.snippet_fg)),
+            ]);
+            frame.render_widget(Paragraph::new(hint), area);
+        } else if !app.query.is_empty() {
             let paragraph = Paragraph::new(Span::styled(
-                "No results",
-                Style::default().fg(t.dim_fg),
+                " No results.",
+                Style::default().fg(t.snippet_fg),
             ));
             frame.render_widget(paragraph, area);
         }

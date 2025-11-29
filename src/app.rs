@@ -98,7 +98,7 @@ impl App {
             total_sessions: 0,
             index_rx: Some(rx),
             indexing: true,
-            search_scope: SearchScope::Everything,
+            search_scope: SearchScope::Folder(launch_cwd.clone()),
             launch_cwd,
         };
 
