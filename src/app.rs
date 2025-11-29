@@ -98,7 +98,7 @@ impl App {
             total_sessions: 0,
             index_rx: Some(rx),
             indexing: true,
-            search_scope: SearchScope::Folder(launch_cwd.clone()),
+            search_scope: SearchScope::Everything,
             launch_cwd,
         };
 
@@ -192,7 +192,10 @@ impl App {
     pub fn scope_folder_name(&self) -> Option<&str> {
         match &self.search_scope {
             SearchScope::Everything => None,
-            SearchScope::Folder(path) => path.rsplit('/').next(),
+            SearchScope::Folder(path) => {
+                // Handle both Unix (/) and Windows (\) path separators
+                path.rsplit(['/', '\\']).next()
+            }
         }
     }
 
@@ -206,8 +209,10 @@ impl App {
             SearchScope::Folder(path) => path.as_str(),
         };
 
-        // Replace home dir with ~
-        let home = std::env::var("HOME").unwrap_or_default();
+        // Replace home dir with ~ (HOME on Unix, USERPROFILE on Windows)
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_default();
         let display_path = if !home.is_empty() && path.starts_with(&home) {
             format!("~{}", &path[home.len()..])
         } else {
@@ -221,7 +226,8 @@ impl App {
         }
 
         // Otherwise show prefix/.../<last_dir>
-        let last_component = path.rsplit('/').next().unwrap_or(path);
+        // Handle both Unix (/) and Windows (\) path separators
+        let last_component = path.rsplit(['/', '\\']).next().unwrap_or(path);
         let prefix = if display_path.starts_with('~') { "~" } else { "" };
         Some(format!("{}/.../{}", prefix, last_component))
     }

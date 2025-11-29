@@ -8,7 +8,7 @@ mod ui;
 
 use anyhow::Result;
 use app::App;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers, MouseEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use std::time::Duration;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -67,7 +67,9 @@ fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<()> {
         // Handle all pending events (drain queue to prevent mouse event flooding)
         while event::poll(Duration::from_millis(0))? {
             match event::read()? {
-                Event::Key(key) => match key.code {
+                // On Windows, crossterm sends both Press and Release events.
+                // Only handle Press to avoid double input.
+                Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         app.should_quit = true;
                     }
