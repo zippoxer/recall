@@ -60,7 +60,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Result<Self> {
+    pub fn new(initial_query: String) -> Result<Self> {
         let cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("recall");
@@ -82,8 +82,8 @@ impl App {
             background_index(index_path_clone, state_path, tx);
         });
 
-        Ok(Self {
-            query: String::new(),
+        let mut app = Self {
+            query: initial_query,
             results: Vec::new(),
             selected: 0,
             list_scroll: 0,
@@ -100,7 +100,14 @@ impl App {
             indexing: true,
             search_scope: SearchScope::Folder(launch_cwd.clone()),
             launch_cwd,
-        })
+        };
+
+        // If there's an initial query, run the search immediately
+        if !app.query.is_empty() {
+            let _ = app.search();
+        }
+
+        Ok(app)
     }
 
     /// Check for indexing updates (call this in the main loop)

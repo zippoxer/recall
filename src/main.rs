@@ -12,8 +12,11 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers, MouseEventKind};
 use std::time::Duration;
 
 fn main() -> Result<()> {
+    // Collect command-line args (skip program name, join with spaces)
+    let initial_query: String = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
+
     // Initialize app (starts background indexing automatically)
-    let mut app = App::new()?;
+    let mut app = App::new(initial_query)?;
 
     // Initialize terminal
     let mut terminal = tui::init()?;
