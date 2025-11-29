@@ -1,6 +1,6 @@
 [package]
 name = "recall"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Search and resume Claude Code and Codex CLI conversations"
 

@@ -11,9 +11,22 @@ use app::App;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers, MouseEventKind};
 use std::time::Duration;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn main() -> Result<()> {
-    // Collect command-line args (skip program name, join with spaces)
-    let initial_query: String = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
+    // Handle --help and --version
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        print_help();
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("recall {}", VERSION);
+        return Ok(());
+    }
+
+    // Collect remaining args as initial search query
+    let initial_query = args.join(" ");
 
     // Initialize app (starts background indexing automatically)
     let mut app = App::new(initial_query)?;
@@ -128,4 +141,22 @@ fn copy_to_clipboard(text: &str) -> Result<()> {
     let mut clipboard = Clipboard::new()?;
     clipboard.set_text(text)?;
     Ok(())
+}
+
+fn print_help() {
+    println!(
+        "recall {} - Search and resume Claude Code and Codex CLI conversations
+
+Usage: recall [query]
+
+Examples:
+  recall
+  recall foo
+  recall foo bar
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version",
+        VERSION
+    );
 }
