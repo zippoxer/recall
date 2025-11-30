@@ -1,6 +1,6 @@
 ---
 source: tests/integration.rs
-expression: output
+expression: buffer_to_string(&terminal)
 ---
                                                               │
   zzzznotfound█                                               │  /  everywhere

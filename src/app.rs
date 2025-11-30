@@ -75,10 +75,12 @@ impl App {
 
         let index = SessionIndex::open_or_create(&index_path)?;
 
-        // Get launch directory
-        let launch_cwd = std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
+        // Get launch directory (override for tests)
+        let launch_cwd = std::env::var("RECALL_CWD_OVERRIDE").unwrap_or_else(|_| {
+            std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default()
+        });
 
         // Start background indexing
         let (tx, rx) = mpsc::channel();

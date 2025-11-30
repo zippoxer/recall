@@ -359,21 +359,27 @@ fn test_initial_query() {
 // UI Snapshot Tests
 // =============================================================================
 
-/// Replace dynamic paths with placeholders for stable snapshots
-fn normalize_snapshot(s: &str, temp_path: &str) -> String {
-    // Replace the actual temp directory path with <TEMP>
-    s.replace(temp_path, "<TEMP>")
-}
-
 // Note: We only snapshot "no results" states because result ordering from Tantivy
 // is non-deterministic, making snapshots with results flaky.
+
+const TEST_CWD: &str = "/test/cwd";
+
+fn setup_ui_test() -> TempDir {
+    let temp_dir = setup_test_env();
+    std::env::set_var("RECALL_HOME_OVERRIDE", temp_dir.path());
+    std::env::set_var("RECALL_CWD_OVERRIDE", TEST_CWD);
+    temp_dir
+}
+
+fn cleanup_ui_test() {
+    std::env::remove_var("RECALL_HOME_OVERRIDE");
+    std::env::remove_var("RECALL_CWD_OVERRIDE");
+}
 
 #[test]
 fn test_ui_no_query_folder_scope() {
     let _lock = lock_test();
-    let temp_dir = setup_test_env();
-    let temp_path = temp_dir.path().to_string_lossy().to_string();
-    std::env::set_var("RECALL_HOME_OVERRIDE", temp_dir.path());
+    let _temp_dir = setup_ui_test();
 
     let mut app = recall::App::new(String::new()).unwrap();
     wait_for_indexing(&mut app, 100);
@@ -381,10 +387,9 @@ fn test_ui_no_query_folder_scope() {
     // Stay in folder scope (no sessions match CWD)
     let terminal = render_app(&mut app);
 
-    std::env::remove_var("RECALL_HOME_OVERRIDE");
+    cleanup_ui_test();
 
-    let output = normalize_snapshot(&buffer_to_string(&terminal), &temp_path);
-    assert_snapshot!(output);
+    assert_snapshot!(buffer_to_string(&terminal));
 }
 
 #[test]
@@ -392,13 +397,11 @@ fn test_ui_no_query_everywhere_scope() {
     let _lock = lock_test();
     // Use empty temp dir (no fixtures) so there are no results
     let temp_dir = TempDir::new().unwrap();
-    let temp_path = temp_dir.path().to_string_lossy().to_string();
-
-    // Create empty .claude and .codex directories
     std::fs::create_dir_all(temp_dir.path().join(".claude/projects")).unwrap();
     std::fs::create_dir_all(temp_dir.path().join(".codex/sessions")).unwrap();
 
     std::env::set_var("RECALL_HOME_OVERRIDE", temp_dir.path());
+    std::env::set_var("RECALL_CWD_OVERRIDE", TEST_CWD);
 
     let mut app = recall::App::new(String::new()).unwrap();
     wait_for_indexing(&mut app, 100);
@@ -408,18 +411,15 @@ fn test_ui_no_query_everywhere_scope() {
 
     let terminal = render_app(&mut app);
 
-    std::env::remove_var("RECALL_HOME_OVERRIDE");
+    cleanup_ui_test();
 
-    let output = normalize_snapshot(&buffer_to_string(&terminal), &temp_path);
-    assert_snapshot!(output);
+    assert_snapshot!(buffer_to_string(&terminal));
 }
 
 #[test]
 fn test_ui_with_query_folder_scope_no_results() {
     let _lock = lock_test();
-    let temp_dir = setup_test_env();
-    let temp_path = temp_dir.path().to_string_lossy().to_string();
-    std::env::set_var("RECALL_HOME_OVERRIDE", temp_dir.path());
+    let _temp_dir = setup_ui_test();
 
     let mut app = recall::App::new(String::new()).unwrap();
     wait_for_indexing(&mut app, 100);
@@ -431,18 +431,15 @@ fn test_ui_with_query_folder_scope_no_results() {
 
     let terminal = render_app(&mut app);
 
-    std::env::remove_var("RECALL_HOME_OVERRIDE");
+    cleanup_ui_test();
 
-    let output = normalize_snapshot(&buffer_to_string(&terminal), &temp_path);
-    assert_snapshot!(output);
+    assert_snapshot!(buffer_to_string(&terminal));
 }
 
 #[test]
 fn test_ui_with_query_everywhere_scope_no_results() {
     let _lock = lock_test();
-    let temp_dir = setup_test_env();
-    let temp_path = temp_dir.path().to_string_lossy().to_string();
-    std::env::set_var("RECALL_HOME_OVERRIDE", temp_dir.path());
+    let _temp_dir = setup_ui_test();
 
     let mut app = recall::App::new(String::new()).unwrap();
     wait_for_indexing(&mut app, 100);
@@ -455,8 +452,7 @@ fn test_ui_with_query_everywhere_scope_no_results() {
 
     let terminal = render_app(&mut app);
 
-    std::env::remove_var("RECALL_HOME_OVERRIDE");
+    cleanup_ui_test();
 
-    let output = normalize_snapshot(&buffer_to_string(&terminal), &temp_path);
-    assert_snapshot!(output);
+    assert_snapshot!(buffer_to_string(&terminal));
 }

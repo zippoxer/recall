@@ -1,10 +1,10 @@
 ---
 source: tests/integration.rs
-expression: output
+expression: buffer_to_string(&terminal)
 ---
-                                                           │
-  zzzznotfound█                                            │  /  ~/code/recall
-                                                           │
+                                                               │
+  zzzznotfound█                                                │  /  /test/cwd
+                                                               │
 
   No results. Press  /  to search everywhere.
 
