@@ -118,7 +118,7 @@ fn detect_light_theme() -> bool {
 
     // Fallback: Check COLORFGBG env var (format: "fg;bg" where 15=white, 0=black)
     if let Ok(val) = std::env::var("COLORFGBG") {
-        if let Some(bg) = val.split(';').last() {
+        if let Some(bg) = val.split(';').next_back() {
             if let Ok(bg_num) = bg.parse::<u8>() {
                 return bg_num >= 7;
             }

@@ -333,7 +333,7 @@ fn render_preview(frame: &mut Frame, app: &mut App, area: Rect) {
             ]));
         }
 
-        prev_role = Some(message.role.clone());
+        prev_role = Some(message.role);
 
         // Message content with word wrapping
         let wrapped_lines = wrap_text(&message.content, bubble_width);
@@ -643,6 +643,7 @@ fn truncate_snippet_around_match(snippet: &str, query: &str, max_width: usize) -
 }
 
 /// Highlight query matches in text (case-insensitive, Unicode-safe)
+#[allow(dead_code)]
 fn highlight_matches<'a>(text: &'a str, query: &str) -> Vec<Span<'a>> {
     if query.is_empty() {
         return vec![Span::raw(text)];

@@ -10,6 +10,7 @@ use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy};
 pub struct SessionIndex {
     index: Index,
     reader: IndexReader,
+    #[allow(dead_code)]
     schema: Schema,
     // Field handles
     session_id: Field,
@@ -177,7 +178,7 @@ impl SessionIndex {
                 .and_then(|v| v.as_str())
                 .unwrap_or("claude");
 
-            let source = SessionSource::from_str(source_str).unwrap_or(SessionSource::ClaudeCode);
+            let source = SessionSource::parse(source_str).unwrap_or(SessionSource::ClaudeCode);
 
             let file_path = doc
                 .get_first(self.file_path)
@@ -310,7 +311,7 @@ impl SessionIndex {
                 .and_then(|v| v.as_str())
                 .unwrap_or("claude");
 
-            let source = SessionSource::from_str(source_str).unwrap_or(SessionSource::ClaudeCode);
+            let source = SessionSource::parse(source_str).unwrap_or(SessionSource::ClaudeCode);
 
             let file_path = doc
                 .get_first(self.file_path)

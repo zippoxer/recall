@@ -15,7 +15,7 @@ impl SessionSource {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "claude" => Some(SessionSource::ClaudeCode),
             "codex" => Some(SessionSource::CodexCli),
