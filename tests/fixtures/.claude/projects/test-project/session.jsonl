@@ -1,0 +1,4 @@
+{"type":"user","sessionId":"test-claude-123","cwd":"/test/project","timestamp":"2025-01-15T10:00:00Z","message":{"role":"user","content":"hello world"}}
+{"type":"assistant","sessionId":"test-claude-123","cwd":"/test/project","timestamp":"2025-01-15T10:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"Hi there! How can I help you today?"}]}}
+{"type":"user","sessionId":"test-claude-123","cwd":"/test/project","timestamp":"2025-01-15T10:00:02Z","message":{"role":"user","content":"fix the authentication bug in login.rs"}}
+{"type":"assistant","sessionId":"test-claude-123","cwd":"/test/project","timestamp":"2025-01-15T10:00:03Z","message":{"role":"assistant","content":[{"type":"text","text":"I'll fix the authentication issue in login.rs. The bug was caused by incorrect password hashing."}]}}

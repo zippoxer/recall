@@ -1,13 +1,5 @@
-mod app;
-mod index;
-mod parser;
-mod session;
-mod theme;
-mod tui;
-mod ui;
-
 use anyhow::Result;
-use app::App;
+use recall::{app::App, session, tui, ui};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use std::time::Duration;
 

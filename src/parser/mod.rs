@@ -21,7 +21,13 @@ pub trait SessionParser {
 pub fn discover_session_files() -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
 
-    if let Some(home) = dirs::home_dir() {
+    // Allow override for testing
+    let home = std::env::var("RECALL_HOME_OVERRIDE")
+        .map(std::path::PathBuf::from)
+        .ok()
+        .or_else(dirs::home_dir);
+
+    if let Some(home) = home {
         // Claude Code: ~/.claude/projects/*/*.jsonl
         let claude_dir = home.join(".claude/projects");
         if claude_dir.exists() {
