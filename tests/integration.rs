@@ -1,3 +1,4 @@
+use insta::assert_snapshot;
 use ratatui::{backend::TestBackend, Terminal};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -79,10 +80,32 @@ fn buffer_contains(terminal: &Terminal<TestBackend>, text: &str) -> bool {
 
 /// Render app to test terminal
 fn render_app(app: &mut recall::App) -> Terminal<TestBackend> {
-    let backend = TestBackend::new(120, 40);
+    let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
     terminal.draw(|f| recall::ui::render(f, app)).unwrap();
     terminal
+}
+
+/// Convert terminal buffer to string for snapshot testing
+fn buffer_to_string(terminal: &Terminal<TestBackend>) -> String {
+    let buffer = terminal.backend().buffer();
+    let mut result = String::new();
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width {
+            let cell = buffer.cell((x, y)).unwrap();
+            result.push_str(cell.symbol());
+        }
+        // Trim trailing whitespace from each line
+        while result.ends_with(' ') {
+            result.pop();
+        }
+        result.push('\n');
+    }
+    // Remove trailing empty lines
+    while result.ends_with("\n\n") {
+        result.pop();
+    }
+    result
 }
 
 // =============================================================================
@@ -330,4 +353,110 @@ fn test_initial_query() {
     std::env::remove_var("RECALL_HOME_OVERRIDE");
 
     assert_eq!(app.query, "initial", "Should have initial query");
+}
+
+// =============================================================================
+// UI Snapshot Tests
+// =============================================================================
+
+/// Replace dynamic paths with placeholders for stable snapshots
+fn normalize_snapshot(s: &str, temp_path: &str) -> String {
+    // Replace the actual temp directory path with <TEMP>
+    s.replace(temp_path, "<TEMP>")
+}
+
+// Note: We only snapshot "no results" states because result ordering from Tantivy
+// is non-deterministic, making snapshots with results flaky.
+
+#[test]
+fn test_ui_no_query_folder_scope() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+    let temp_path = temp_dir.path().to_string_lossy().to_string();
+    std::env::set_var("RECALL_HOME_OVERRIDE", temp_dir.path());
+
+    let mut app = recall::App::new(String::new()).unwrap();
+    wait_for_indexing(&mut app, 100);
+
+    // Stay in folder scope (no sessions match CWD)
+    let terminal = render_app(&mut app);
+
+    std::env::remove_var("RECALL_HOME_OVERRIDE");
+
+    let output = normalize_snapshot(&buffer_to_string(&terminal), &temp_path);
+    assert_snapshot!(output);
+}
+
+#[test]
+fn test_ui_no_query_everywhere_scope() {
+    let _lock = lock_test();
+    // Use empty temp dir (no fixtures) so there are no results
+    let temp_dir = TempDir::new().unwrap();
+    let temp_path = temp_dir.path().to_string_lossy().to_string();
+
+    // Create empty .claude and .codex directories
+    std::fs::create_dir_all(temp_dir.path().join(".claude/projects")).unwrap();
+    std::fs::create_dir_all(temp_dir.path().join(".codex/sessions")).unwrap();
+
+    std::env::set_var("RECALL_HOME_OVERRIDE", temp_dir.path());
+
+    let mut app = recall::App::new(String::new()).unwrap();
+    wait_for_indexing(&mut app, 100);
+
+    // Toggle to everywhere scope
+    app.toggle_scope();
+
+    let terminal = render_app(&mut app);
+
+    std::env::remove_var("RECALL_HOME_OVERRIDE");
+
+    let output = normalize_snapshot(&buffer_to_string(&terminal), &temp_path);
+    assert_snapshot!(output);
+}
+
+#[test]
+fn test_ui_with_query_folder_scope_no_results() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+    let temp_path = temp_dir.path().to_string_lossy().to_string();
+    std::env::set_var("RECALL_HOME_OVERRIDE", temp_dir.path());
+
+    let mut app = recall::App::new(String::new()).unwrap();
+    wait_for_indexing(&mut app, 100);
+
+    // Stay in folder scope and search
+    for c in "zzzznotfound".chars() {
+        app.on_char(c);
+    }
+
+    let terminal = render_app(&mut app);
+
+    std::env::remove_var("RECALL_HOME_OVERRIDE");
+
+    let output = normalize_snapshot(&buffer_to_string(&terminal), &temp_path);
+    assert_snapshot!(output);
+}
+
+#[test]
+fn test_ui_with_query_everywhere_scope_no_results() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+    let temp_path = temp_dir.path().to_string_lossy().to_string();
+    std::env::set_var("RECALL_HOME_OVERRIDE", temp_dir.path());
+
+    let mut app = recall::App::new(String::new()).unwrap();
+    wait_for_indexing(&mut app, 100);
+
+    // Toggle to everywhere and search for something that doesn't exist
+    app.toggle_scope();
+    for c in "zzzznotfound".chars() {
+        app.on_char(c);
+    }
+
+    let terminal = render_app(&mut app);
+
+    std::env::remove_var("RECALL_HOME_OVERRIDE");
+
+    let output = normalize_snapshot(&buffer_to_string(&terminal), &temp_path);
+    assert_snapshot!(output);
 }

@@ -1,0 +1,28 @@
+---
+source: tests/integration.rs
+expression: output
+---
+                                                              │
+  zzzznotfound█                                               │  /  everywhere
+                                                              │
+
+  No results.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ↑↓  navigate  │  Esc  quit                                         2 sessions

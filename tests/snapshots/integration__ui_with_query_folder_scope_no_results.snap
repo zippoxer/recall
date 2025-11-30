@@ -1,0 +1,28 @@
+---
+source: tests/integration.rs
+expression: output
+---
+                                                           │
+  zzzznotfound█                                            │  /  ~/code/recall
+                                                           │
+
+  No results. Press  /  to search everywhere.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ↑↓  navigate  │  Esc  quit                                         2 sessions

@@ -28,6 +28,7 @@ thiserror = "1"
 arboard = "3"
 
 [dev-dependencies]
+insta = "1.44.3"
 tempfile = "3"
 
 [profile.release]

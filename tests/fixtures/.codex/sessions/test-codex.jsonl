@@ -1,5 +1,5 @@
-{"type":"session_meta","timestamp":"2025-01-15T11:00:00Z","payload":{"id":"test-codex-456","cwd":"/projects/webapp","git":{"branch":"main"}}}
-{"type":"response_item","timestamp":"2025-01-15T11:00:01Z","payload":{"role":"user","content":[{"type":"input_text","text":"search for all TypeScript files"}]}}
-{"type":"response_item","timestamp":"2025-01-15T11:00:02Z","payload":{"role":"assistant","content":[{"type":"output_text","text":"Found 15 TypeScript files in the project."}]}}
-{"type":"response_item","timestamp":"2025-01-15T11:00:03Z","payload":{"role":"user","content":[{"type":"input_text","text":"refactor the database module"}]}}
-{"type":"response_item","timestamp":"2025-01-15T11:00:04Z","payload":{"role":"assistant","content":[{"type":"output_text","text":"I'll refactor the database module to use connection pooling."}]}}
+{"timestamp":"2025-01-16T11:00:00.000Z","type":"session_meta","payload":{"id":"test-codex-456","timestamp":"2025-01-16T11:00:00.000Z","cwd":"/projects/webapp","originator":"codex_cli_rs","cli_version":"0.52.0","source":"cli","model_provider":"anthropic","git":{"commit_hash":"abc123","branch":"main","repository_url":"git@github.com:user/webapp.git"}}}
+{"timestamp":"2025-01-16T11:01:00.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"search for all TypeScript files"}]}}
+{"timestamp":"2025-01-16T11:02:00.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Found 15 TypeScript files in the project."}]}}
+{"timestamp":"2025-01-16T11:03:00.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"refactor the database module"}]}}
+{"timestamp":"2025-01-16T11:04:00.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I'll refactor the database module to use connection pooling."}]}}
