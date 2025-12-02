@@ -161,6 +161,7 @@ fn test_search_finds_matching_content() {
     for c in "hello".chars() {
         app.on_char(c);
     }
+    app.flush_pending_search();
 
     std::env::remove_var("RECALL_HOME_OVERRIDE");
 
@@ -188,6 +189,7 @@ fn test_search_no_results_shows_hint() {
     for c in "xyznonexistent".chars() {
         app.on_char(c);
     }
+    app.flush_pending_search();
 
     let terminal = render_app(&mut app);
 
@@ -286,6 +288,7 @@ fn test_search_during_indexing() {
     app.on_char('e');
     app.on_char('s');
     app.on_char('t');
+    app.flush_pending_search();
 
     let terminal = render_app(&mut app);
 
@@ -428,6 +431,7 @@ fn test_ui_with_query_folder_scope_no_results() {
     for c in "zzzznotfound".chars() {
         app.on_char(c);
     }
+    app.flush_pending_search();
 
     let terminal = render_app(&mut app);
 
@@ -449,6 +453,7 @@ fn test_ui_with_query_everywhere_scope_no_results() {
     for c in "zzzznotfound".chars() {
         app.on_char(c);
     }
+    app.flush_pending_search();
 
     let terminal = render_app(&mut app);
 

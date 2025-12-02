@@ -5,12 +5,17 @@ use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
+use std::time::{Duration, Instant};
+
+/// Debounce delay for search (avoid searching on every keystroke during fast typing/paste)
+const SEARCH_DEBOUNCE: Duration = Duration::from_millis(50);
 
 /// Messages from the indexing thread
 pub enum IndexMsg {
     Progress { indexed: usize, total: usize },
     Done { total_sessions: usize },
     NeedsReload,
+    Error(String),
 }
 
 /// Search scope
@@ -25,6 +30,8 @@ pub enum SearchScope {
 pub struct App {
     /// Current search query
     pub query: String,
+    /// Cursor position in query (char index)
+    pub cursor: usize,
     /// Search results
     pub results: Vec<SearchResult>,
     /// Selected result index
@@ -57,6 +64,12 @@ pub struct App {
     pub search_scope: SearchScope,
     /// Launch directory (for folder-scoped search)
     pub launch_cwd: String,
+    /// Whether a search is pending (for debouncing)
+    search_pending: bool,
+    /// When the last input occurred (for debouncing)
+    last_input: Instant,
+    /// Error from indexing thread (shown on exit)
+    pub index_error: Option<String>,
 }
 
 impl App {
@@ -89,8 +102,10 @@ impl App {
             background_index(index_path_clone, state_path, tx);
         });
 
+        let initial_cursor = initial_query.chars().count();
         let mut app = Self {
             query: initial_query,
+            cursor: initial_cursor,
             results: Vec::new(),
             selected: 0,
             list_scroll: 0,
@@ -107,6 +122,9 @@ impl App {
             indexing: true,
             search_scope: SearchScope::Folder(launch_cwd.clone()),
             launch_cwd,
+            search_pending: false,
+            last_input: Instant::now(),
+            index_error: None,
         };
 
         // If there's an initial query, run the search immediately
@@ -119,15 +137,25 @@ impl App {
 
     /// Check for indexing updates (call this in the main loop)
     pub fn poll_index_updates(&mut self) {
-        if self.index_rx.is_none() {
-            return;
-        }
+        use std::sync::mpsc::TryRecvError;
 
-        // Collect messages first to avoid borrow issues
-        let messages: Vec<_> = {
-            let rx = self.index_rx.as_ref().unwrap();
-            std::iter::from_fn(|| rx.try_recv().ok()).collect()
+        let Some(rx) = &self.index_rx else {
+            return;
         };
+
+        // Collect messages, tracking if channel was disconnected
+        let mut messages = Vec::new();
+        let mut channel_disconnected = false;
+        loop {
+            match rx.try_recv() {
+                Ok(msg) => messages.push(msg),
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    channel_disconnected = true;
+                    break;
+                }
+            }
+        }
 
         let mut should_close_rx = false;
         let mut needs_reload = false;
@@ -151,7 +179,21 @@ impl App {
                     needs_reload = true;
                     needs_search = true;
                 }
+                IndexMsg::Error(err) => {
+                    self.index_error = Some(err);
+                    self.status = Some("Index error • Ctrl+C for details".to_string());
+                    self.indexing = false;
+                    should_close_rx = true;
+                }
             }
+        }
+
+        // Detect unexpected indexer death (channel closed without Done/Error)
+        if channel_disconnected && self.indexing {
+            self.index_error = Some("Indexer stopped unexpectedly (possible crash)".to_string());
+            self.status = Some("Index error • Ctrl+C for details".to_string());
+            self.indexing = false;
+            should_close_rx = true;
         }
 
         if needs_reload {
@@ -167,6 +209,9 @@ impl App {
 
     /// Perform a search (or show recent sessions if query is empty)
     pub fn search(&mut self) -> Result<()> {
+        // Remember currently selected session to preserve selection
+        let selected_session_id = self.results.get(self.selected).map(|r| r.session.id.clone());
+
         let mut results = if self.query.is_empty() {
             self.index.recent(50)?
         } else {
@@ -179,8 +224,21 @@ impl App {
         }
 
         self.results = results;
-        self.selected = 0;
-        self.list_scroll = 0;
+
+        // Try to preserve selection on the same session
+        if let Some(ref id) = selected_session_id {
+            if let Some(pos) = self.results.iter().position(|r| &r.session.id == id) {
+                self.selected = pos;
+                // Scroll to keep selection visible (at top of list area)
+                self.list_scroll = pos;
+            } else {
+                self.selected = 0;
+                self.list_scroll = 0;
+            }
+        } else {
+            self.selected = 0;
+            self.list_scroll = 0;
+        }
         self.update_preview_scroll();
 
         Ok(())
@@ -239,14 +297,31 @@ impl App {
 
     /// Handle character input
     pub fn on_char(&mut self, c: char) {
-        self.query.push(c);
-        let _ = self.search();
+        // Insert at cursor position
+        let byte_pos = self.cursor_byte_pos();
+        self.query.insert(byte_pos, c);
+        self.cursor += 1;
+        self.mark_search_pending();
     }
 
     /// Handle backspace
     pub fn on_backspace(&mut self) {
-        self.query.pop();
-        let _ = self.search();
+        if self.cursor > 0 {
+            self.cursor -= 1;
+            let byte_pos = self.cursor_byte_pos();
+            self.query.remove(byte_pos);
+            self.mark_search_pending();
+        }
+    }
+
+    /// Handle delete key
+    pub fn on_delete(&mut self) {
+        let char_count = self.query.chars().count();
+        if self.cursor < char_count {
+            let byte_pos = self.cursor_byte_pos();
+            self.query.remove(byte_pos);
+            self.mark_search_pending();
+        }
     }
 
     /// Clear search
@@ -255,6 +330,60 @@ impl App {
             self.should_quit = true;
         } else {
             self.query.clear();
+            self.cursor = 0;
+            self.mark_search_pending();
+        }
+    }
+
+    /// Move cursor left
+    pub fn on_left(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    /// Move cursor right
+    pub fn on_right(&mut self) {
+        let char_count = self.query.chars().count();
+        if self.cursor < char_count {
+            self.cursor += 1;
+        }
+    }
+
+    /// Move cursor to start
+    pub fn on_home(&mut self) {
+        self.cursor = 0;
+    }
+
+    /// Move cursor to end
+    pub fn on_end(&mut self) {
+        self.cursor = self.query.chars().count();
+    }
+
+    /// Convert cursor (char index) to byte position
+    fn cursor_byte_pos(&self) -> usize {
+        self.query.char_indices()
+            .nth(self.cursor)
+            .map(|(i, _)| i)
+            .unwrap_or(self.query.len())
+    }
+
+    /// Mark that a search is needed (debounced)
+    fn mark_search_pending(&mut self) {
+        self.search_pending = true;
+        self.last_input = Instant::now();
+    }
+
+    /// Check if debounce period has elapsed and trigger search if needed
+    pub fn maybe_search(&mut self) {
+        if self.search_pending && self.last_input.elapsed() >= SEARCH_DEBOUNCE {
+            self.search_pending = false;
+            let _ = self.search();
+        }
+    }
+
+    /// Force any pending search to run immediately (for tests)
+    pub fn flush_pending_search(&mut self) {
+        if self.search_pending {
+            self.search_pending = false;
             let _ = self.search();
         }
     }
@@ -318,11 +447,19 @@ impl App {
 
 /// Background indexing function
 fn background_index(index_path: PathBuf, state_path: PathBuf, tx: Sender<IndexMsg>) {
-    let Ok(index) = SessionIndex::open_or_create(&index_path) else {
-        return;
+    let index = match SessionIndex::open_or_create(&index_path) {
+        Ok(idx) => idx,
+        Err(e) => {
+            let _ = tx.send(IndexMsg::Error(format!("Failed to open index: {}", e)));
+            return;
+        }
     };
-    let Ok(mut state) = IndexState::load(&state_path) else {
-        return;
+    let mut state = match IndexState::load(&state_path) {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = tx.send(IndexMsg::Error(format!("Failed to load index state: {}", e)));
+            return;
+        }
     };
 
     // Discover and sort files by mtime (most recent first)
@@ -351,8 +488,12 @@ fn background_index(index_path: PathBuf, state_path: PathBuf, tx: Sender<IndexMs
         return;
     }
 
-    let Ok(mut writer) = index.writer() else {
-        return;
+    let mut writer = match index.writer() {
+        Ok(w) => w,
+        Err(e) => {
+            let _ = tx.send(IndexMsg::Error(format!("Failed to create index writer: {}", e)));
+            return;
+        }
     };
 
     for (i, file_path) in files_to_index.iter().enumerate() {

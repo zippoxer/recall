@@ -5,6 +5,8 @@ use std::path::PathBuf;
 pub enum SessionSource {
     ClaudeCode,
     CodexCli,
+    Factory,
+    OpenCode,
 }
 
 impl SessionSource {
@@ -12,6 +14,8 @@ impl SessionSource {
         match self {
             SessionSource::ClaudeCode => "claude",
             SessionSource::CodexCli => "codex",
+            SessionSource::Factory => "factory",
+            SessionSource::OpenCode => "opencode",
         }
     }
 
@@ -19,6 +23,8 @@ impl SessionSource {
         match s {
             "claude" => Some(SessionSource::ClaudeCode),
             "codex" => Some(SessionSource::CodexCli),
+            "factory" => Some(SessionSource::Factory),
+            "opencode" => Some(SessionSource::OpenCode),
             _ => None,
         }
     }
@@ -27,6 +33,8 @@ impl SessionSource {
         match self {
             SessionSource::ClaudeCode => "Claude",
             SessionSource::CodexCli => "Codex",
+            SessionSource::Factory => "Factory",
+            SessionSource::OpenCode => "OpenCode",
         }
     }
 
@@ -34,6 +42,8 @@ impl SessionSource {
         match self {
             SessionSource::ClaudeCode => "●",
             SessionSource::CodexCli => "■",
+            SessionSource::Factory => "◆",
+            SessionSource::OpenCode => "○",
         }
     }
 }
@@ -81,12 +91,14 @@ impl Session {
     }
 
     /// Get the resume command for this session
-    /// Checks RECALL_CLAUDE_CMD / RECALL_CODEX_CMD env vars first, falls back to defaults
+    /// Checks RECALL_CLAUDE_CMD / RECALL_CODEX_CMD / RECALL_FACTORY_CMD env vars first, falls back to defaults
     /// Env var format: "program arg1 arg2 {id}" where {id} is replaced with session ID
     pub fn resume_command(&self) -> (String, Vec<String>) {
         let env_var = match self.source {
             SessionSource::ClaudeCode => "RECALL_CLAUDE_CMD",
             SessionSource::CodexCli => "RECALL_CODEX_CMD",
+            SessionSource::Factory => "RECALL_FACTORY_CMD",
+            SessionSource::OpenCode => "RECALL_OPENCODE_CMD",
         };
 
         if let Ok(cmd) = std::env::var(env_var) {
@@ -110,6 +122,14 @@ impl Session {
                 "codex".to_string(),
                 vec!["resume".to_string(), self.id.clone()],
             ),
+            SessionSource::Factory => (
+                "droid".to_string(),
+                vec!["--resume".to_string(), self.id.clone()],
+            ),
+            SessionSource::OpenCode => (
+                "opencode".to_string(),
+                vec!["run".to_string(), "-s".to_string(), self.id.clone()],
+            ),
         }
     }
 }
@@ -120,8 +140,10 @@ pub struct SearchResult {
     pub score: f32,
     /// Index of the most recent message containing a match
     pub matched_message_index: usize,
-    /// Snippet from the matched message
+    /// Snippet from the matched message (newlines replaced with spaces)
     pub snippet: String,
     /// Byte ranges of matches within the snippet for highlighting
     pub match_spans: Vec<(usize, usize)>,
+    /// Original fragment from Tantivy (for finding match in wrapped text)
+    pub match_fragment: String,
 }

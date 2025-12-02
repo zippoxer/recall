@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use super::SessionParser;
+use super::{join_consecutive_messages, SessionParser};
 
 #[derive(Debug, Deserialize)]
 struct ClaudeLine {
@@ -121,7 +121,7 @@ impl SessionParser for ClaudeParser {
             cwd: cwd.unwrap_or_else(|| ".".to_string()),
             git_branch,
             timestamp: latest_timestamp.unwrap_or_else(Utc::now),
-            messages,
+            messages: join_consecutive_messages(messages),
         })
     }
 }
@@ -173,4 +173,5 @@ mod tests {
         ]);
         assert_eq!(extract_content(&content), "Hello\nWorld");
     }
+
 }

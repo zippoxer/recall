@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use super::SessionParser;
+use super::{join_consecutive_messages, SessionParser};
 
 #[derive(Debug, Deserialize)]
 struct CodexLine {
@@ -159,12 +159,13 @@ impl SessionParser for CodexParser {
             cwd: cwd.unwrap_or_else(|| ".".to_string()),
             git_branch,
             timestamp: latest_timestamp.unwrap_or_else(Utc::now),
-            messages,
+            messages: join_consecutive_messages(messages),
         })
     }
 }
 
-/// Extract text content from a Codex response item
+/// Extract text content from a Codex response item.
+/// Filters out CLI-injected blocks (AGENTS.md instructions, environment_context).
 fn extract_codex_content(item: &ResponseItem) -> String {
     let Some(content) = &item.content else {
         return String::new();
@@ -177,6 +178,24 @@ fn extract_codex_content(item: &ResponseItem) -> String {
             && block.text.is_some()
         {
             if let Some(text) = &block.text {
+                // Skip CLI-injected blocks (must have both open and close tags)
+                let trimmed = text.trim();
+                if trimmed.starts_with("# AGENTS.md instructions for ")
+                    && trimmed.ends_with("</INSTRUCTIONS>")
+                {
+                    continue;
+                }
+                if trimmed.starts_with("<environment_context>")
+                    && trimmed.ends_with("</environment_context>")
+                {
+                    continue;
+                }
+                // Legacy user_instructions format
+                if trimmed.starts_with("<user_instructions>")
+                    && trimmed.ends_with("</user_instructions>")
+                {
+                    continue;
+                }
                 texts.push(text.clone());
             }
         }
@@ -198,5 +217,43 @@ mod tests {
             }]),
         };
         assert_eq!(extract_codex_content(&item), "Hello Codex");
+    }
+
+    #[test]
+    fn test_extract_codex_content_filters_injected_blocks() {
+        let item = ResponseItem {
+            role: Some("user".to_string()),
+            content: Some(vec![
+                ContentBlock {
+                    content_type: "input_text".to_string(),
+                    text: Some("# AGENTS.md instructions for /some/path\n\n<INSTRUCTIONS>\nsome instructions\n</INSTRUCTIONS>".to_string()),
+                },
+                ContentBlock {
+                    content_type: "input_text".to_string(),
+                    text: Some("<environment_context>\n  <cwd>/some/path</cwd>\n</environment_context>".to_string()),
+                },
+                ContentBlock {
+                    content_type: "input_text".to_string(),
+                    text: Some("actual user message".to_string()),
+                },
+            ]),
+        };
+        assert_eq!(extract_codex_content(&item), "actual user message");
+    }
+
+    #[test]
+    fn test_extract_codex_content_keeps_partial_tags() {
+        // User might ask about these tags - don't filter if not properly closed
+        let item = ResponseItem {
+            role: Some("user".to_string()),
+            content: Some(vec![ContentBlock {
+                content_type: "input_text".to_string(),
+                text: Some("<environment_context> what is this?".to_string()),
+            }]),
+        };
+        assert_eq!(
+            extract_codex_content(&item),
+            "<environment_context> what is this?"
+        );
     }
 }

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Search and resume past conversations from Claude Code and Codex CLI.
+Search and resume past conversations from Claude Code, Codex CLI, and Factory (Droid).
 
 ## Principles
 
@@ -23,6 +23,10 @@ cargo clippy         # Lint
 
 To test the TUI end-to-end, use tmux:
 ```bash
+# Clear index cache if testing parser changes
+# macOS: ~/Library/Caches/recall, Linux: ~/.cache/recall
+rm -rf ~/Library/Caches/recall        # macOS
+rm -rf ~/.cache/recall                # Linux
 cargo build && tmux new-session -d -s test './target/debug/recall'
 tmux send-keys -t test 'search query'
 tmux capture-pane -t test -p          # See output
@@ -37,7 +41,7 @@ cargo install --path .
 
 ## Architecture
 
-Rust TUI for searching Claude Code and Codex CLI conversation history.
+Rust TUI for searching Claude Code, Codex CLI, and Factory conversation history.
 
 - `src/main.rs` - Entry point, event loop, exec into CLI on resume
 - `src/app.rs` - Application state, search logic, background indexing thread
@@ -45,8 +49,8 @@ Rust TUI for searching Claude Code and Codex CLI conversation history.
 - `src/tui.rs` - Terminal setup/teardown
 - `src/theme.rs` - Light/dark theme with auto-detection
 - `src/session.rs` - Core types: Session, Message, SearchResult
-- `src/parser/` - JSONL parsers for Claude (`~/.claude/projects/`) and Codex (`~/.codex/sessions/`)
-- `src/index/` - Tantivy full-text search index, stored in `~/.cache/recall/`
+- `src/parser/` - JSONL parsers for Claude (`~/.claude/projects/`), Codex (`~/.codex/sessions/`), and Factory (`~/.factory/sessions/`)
+- `src/index/` - Tantivy full-text search index, stored in `~/Library/Caches/recall/` (macOS) or `~/.cache/recall/` (Linux)
 
 ## Key Patterns
 

@@ -4,6 +4,7 @@ use std::path::Path;
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, BoostQuery, Occur, PhraseQuery, Query, QueryParser};
 use tantivy::schema::*;
+use tantivy::snippet::SnippetGenerator;
 use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy};
 
 /// Wrapper around Tantivy index for session search
@@ -138,24 +139,35 @@ impl SessionIndex {
             .context("Failed to parse query")?;
 
         // Boost exact phrase matches for multi-word queries
-        let words: Vec<&str> = query_str.split_whitespace().collect();
-        let query: Box<dyn Query> = if words.len() > 1 {
-            // Create phrase query for exact match boost
-            let terms: Vec<tantivy::Term> = words
-                .iter()
-                .map(|w| tantivy::Term::from_field_text(self.content, &w.to_lowercase()))
-                .collect();
-            let phrase_query = PhraseQuery::new(terms);
-            let boosted_phrase = BoostQuery::new(Box::new(phrase_query), 5.0);
+        // Use the same tokenizer that indexed the content to tokenize the query
+        let query: Box<dyn Query> = if let Some(mut tokenizer) = self.index.tokenizers().get("default") {
+            let mut terms: Vec<(usize, tantivy::Term)> = Vec::new();
+            let mut token_stream = tokenizer.token_stream(query_str);
+            token_stream.process(&mut |token| {
+                let term = tantivy::Term::from_field_text(self.content, &token.text);
+                terms.push((token.position, term));
+            });
 
-            // Combine: phrase (boosted) OR terms
-            Box::new(BooleanQuery::new(vec![
-                (Occur::Should, Box::new(boosted_phrase) as Box<dyn Query>),
-                (Occur::Should, base_query),
-            ]))
+            if terms.len() > 1 {
+                let phrase_query = PhraseQuery::new_with_offset(terms);
+                let boosted_phrase = BoostQuery::new(Box::new(phrase_query), 10.0);
+
+                // Combine: phrase (boosted) OR terms
+                Box::new(BooleanQuery::new(vec![
+                    (Occur::Should, Box::new(boosted_phrase) as Box<dyn Query>),
+                    (Occur::Should, base_query),
+                ]))
+            } else {
+                base_query
+            }
         } else {
             base_query
         };
+
+        // Create snippet generator from the query - Tantivy knows what terms matched
+        let mut snippet_generator =
+            SnippetGenerator::create(&searcher, &*query, self.content)?;
+        snippet_generator.set_max_num_chars(200);
 
         // Get more results than limit to group by session
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit * 10))?;
@@ -208,15 +220,18 @@ impl SessionIndex {
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as usize;
 
-            let content = doc
-                .get_first(self.content)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            // Use Tantivy's SnippetGenerator for accurate snippet with highlights
+            let tantivy_snippet = snippet_generator.snippet_from_doc(&doc);
+            let fragment = tantivy_snippet.fragment();
+            let highlighted = tantivy_snippet.highlighted();
 
-            // Create snippet around the match (store more, truncate in UI)
-            let snippet = create_snippet(&content, query_str, 200);
-            let match_spans = find_match_spans(&snippet, query_str);
+            // Store original fragment for finding match in wrapped text
+            let match_fragment = fragment.to_string();
+            let snippet = fragment.replace('\n', " ");
+            let match_spans: Vec<(usize, usize)> = highlighted
+                .iter()
+                .map(|r| (r.start, r.end))
+                .collect();
 
             let result = SearchResult {
                 session: Session {
@@ -233,6 +248,7 @@ impl SessionIndex {
                 matched_message_index: message_index,
                 snippet,
                 match_spans,
+                match_fragment,
             };
 
             // Keep the highest-scoring result for each session
@@ -361,6 +377,7 @@ impl SessionIndex {
                 matched_message_index: 0,
                 snippet,
                 match_spans: Vec::new(),
+                match_fragment: String::new(),
             };
 
             session_results.insert(session_id, result);
@@ -379,58 +396,3 @@ impl SessionIndex {
     }
 }
 
-/// Create a snippet around the first match
-fn create_snippet(content: &str, query: &str, max_len: usize) -> String {
-    // Work with chars to avoid Unicode boundary issues
-    let chars: Vec<char> = content.chars().collect();
-    let lower_content: String = chars.iter().collect::<String>().to_lowercase();
-    let lower_query = query.to_lowercase();
-
-    // Find first match (in char indices)
-    if let Some(byte_pos) = lower_content.find(&lower_query) {
-        // Convert byte position to char position
-        let char_pos = lower_content[..byte_pos].chars().count();
-        let query_char_len = lower_query.chars().count();
-
-        let start_char = char_pos.saturating_sub(max_len / 2);
-        let end_char = (char_pos + query_char_len + max_len / 2).min(chars.len());
-
-        let mut snippet: String = chars[start_char..end_char].iter().collect();
-
-        // Add ellipsis if truncated
-        if start_char > 0 {
-            snippet = format!("...{}", snippet.trim_start());
-        }
-        if end_char < chars.len() {
-            snippet = format!("{}...", snippet.trim_end());
-        }
-
-        // Clean up newlines
-        snippet.replace('\n', " ")
-    } else {
-        // No match found, just truncate
-        let truncated: String = chars.iter().take(max_len).collect();
-        if chars.len() > max_len {
-            format!("{}...", truncated.trim())
-        } else {
-            truncated
-        }
-    }
-}
-
-/// Find byte ranges of query matches within a snippet (for highlighting)
-fn find_match_spans(snippet: &str, query: &str) -> Vec<(usize, usize)> {
-    let lower_snippet = snippet.to_lowercase();
-    let lower_query = query.to_lowercase();
-
-    let mut spans = Vec::new();
-    let mut start = 0;
-
-    while let Some(pos) = lower_snippet[start..].find(&lower_query) {
-        let abs_pos = start + pos;
-        spans.push((abs_pos, abs_pos + query.len()));
-        start = abs_pos + query.len();
-    }
-
-    spans
-}

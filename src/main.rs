@@ -17,8 +17,19 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Collect remaining args as initial search query
-    let initial_query = args.join(" ");
+    // Handle --reindex
+    let reindex = args.iter().any(|a| a == "--reindex");
+    if reindex {
+        clear_index_cache();
+    }
+
+    // Collect remaining args as initial search query (excluding flags)
+    let initial_query = args
+        .iter()
+        .filter(|a| !a.starts_with('-'))
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" ");
 
     // Initialize app (starts background indexing automatically)
     let mut app = App::new(initial_query)?;
@@ -31,6 +42,12 @@ fn main() -> Result<()> {
 
     // Restore terminal
     tui::restore()?;
+
+    // Print any indexing error
+    if let Some(ref err) = app.index_error {
+        eprintln!("\nIndexing error:\n  {}\n", err);
+        eprintln!("Try: recall --reindex\n");
+    }
 
     // Handle post-exit actions
     if let Some(session) = app.should_resume {
@@ -47,6 +64,9 @@ fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<()> {
     loop {
         // Poll for indexing updates
         app.poll_index_updates();
+
+        // Check for debounced search
+        app.maybe_search();
 
         // Render
         terminal.draw(|frame| ui::render(frame, app))?;
@@ -70,6 +90,11 @@ fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<()> {
                     KeyCode::Tab => app.on_tab(),
                     KeyCode::Up => app.on_up(),
                     KeyCode::Down => app.on_down(),
+                    KeyCode::Left => app.on_left(),
+                    KeyCode::Right => app.on_right(),
+                    KeyCode::Home => app.on_home(),
+                    KeyCode::End => app.on_end(),
+                    KeyCode::Delete => app.on_delete(),
                     KeyCode::PageUp => app.scroll_preview_up(15),
                     KeyCode::PageDown => app.scroll_preview_down(15),
                     KeyCode::Backspace => app.on_backspace(),
@@ -139,18 +164,35 @@ fn copy_to_clipboard(text: &str) -> Result<()> {
 
 fn print_help() {
     println!(
-        "recall {} - Search and resume Claude Code and Codex CLI conversations
+        "recall {} - Search and resume Claude Code, Codex CLI, and Factory conversations
 
-Usage: recall [query]
+Usage: recall [OPTIONS] [query]
 
 Examples:
   recall
   recall foo
   recall foo bar
+  recall --reindex
 
 Options:
   -h, --help     Print help
-  -V, --version  Print version",
+  -V, --version  Print version
+      --reindex  Clear index and rebuild from scratch",
         VERSION
     );
+}
+
+/// Clear the index cache directory
+fn clear_index_cache() {
+    let cache_dir = std::env::var("RECALL_HOME_OVERRIDE")
+        .map(|h| std::path::PathBuf::from(h).join(".cache").join("recall"))
+        .unwrap_or_else(|_| {
+            dirs::cache_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("recall")
+        });
+
+    if cache_dir.exists() {
+        let _ = std::fs::remove_dir_all(&cache_dir);
+    }
 }

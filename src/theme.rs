@@ -36,6 +36,14 @@ pub struct Theme {
     pub claude_source: Color,
     /// Codex source indicator color
     pub codex_source: Color,
+    /// Factory message bubble background
+    pub factory_bubble_bg: Color,
+    /// Factory source indicator color
+    pub factory_source: Color,
+    /// OpenCode message bubble background
+    pub opencode_bubble_bg: Color,
+    /// OpenCode source indicator color
+    pub opencode_source: Color,
     /// Scope indicator background (slightly different from search_bg)
     pub scope_bg: Color,
     /// Scope keycap background (for "/" key)
@@ -75,6 +83,10 @@ impl Theme {
             codex_bubble_bg: Color::Rgb(30, 45, 35),  // subtle green tint
             claude_source: Color::Rgb(255, 150, 50),  // Anthropic orange
             codex_source: Color::Rgb(80, 200, 120),   // OpenAI green
+            factory_bubble_bg: Color::Rgb(40, 35, 50), // subtle purple tint
+            factory_source: Color::Rgb(150, 120, 200), // Google purple
+            opencode_bubble_bg: Color::Rgb(30, 40, 55), // subtle blue tint
+            opencode_source: Color::Rgb(100, 150, 255), // sky blue
             scope_bg: Color::Rgb(45, 45, 50),         // slightly lighter than search_bg
             scope_key_bg: Color::Rgb(60, 60, 65),     // keycap style
             separator_fg: Color::Rgb(60, 60, 65),     // subtle separator
@@ -101,6 +113,10 @@ impl Theme {
             codex_bubble_bg: Color::Rgb(220, 245, 225),  // subtle green tint
             claude_source: Color::Rgb(200, 100, 20),   // Anthropic orange (darker for light bg)
             codex_source: Color::Rgb(30, 140, 70),    // OpenAI green (darker for light bg)
+            factory_bubble_bg: Color::Rgb(235, 230, 245), // subtle purple tint
+            factory_source: Color::Rgb(100, 80, 160),  // Google purple (darker for light bg)
+            opencode_bubble_bg: Color::Rgb(225, 235, 250), // subtle blue tint
+            opencode_source: Color::Rgb(50, 100, 200), // sky blue (darker for light bg)
             scope_bg: Color::Rgb(215, 215, 220),      // slightly darker than search_bg
             scope_key_bg: Color::Rgb(200, 200, 205),  // keycap style
             separator_fg: Color::Rgb(195, 195, 200),  // visible on light bg
@@ -141,7 +157,14 @@ fn is_light(color: (u8, u8, u8)) -> bool {
 #[cfg(unix)]
 fn query_terminal_bg() -> Option<(u8, u8, u8)> {
     use crossterm::style::{query_background_color, Color as CtColor};
+    use std::io::IsTerminal;
     use std::sync::OnceLock;
+
+    // Only attempt a terminal query when stdout is a TTY.
+    // In test environments or when output is piped, this can block.
+    if !std::io::stdout().is_terminal() {
+        return None;
+    }
 
     // Cache the result since querying can be slow
     static CACHED: OnceLock<Option<(u8, u8, u8)>> = OnceLock::new();
