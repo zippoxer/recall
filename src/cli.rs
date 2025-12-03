@@ -11,6 +11,7 @@ use recall::{
 const DEFAULT_MESSAGES_PER_SESSION: usize = 5;
 
 /// Run the search subcommand
+#[allow(clippy::too_many_arguments)]
 pub fn run_search(
     query: &str,
     source: Option<SessionSource>,
