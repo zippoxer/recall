@@ -36,7 +36,7 @@ recall
 
 | Key | Action |
 |-----|--------|
-| `↑↓` | Navigate results |
+| `↑↓` | Navigate sessions |
 | `Pg↑/↓` | Scroll messages |
 | `Space` | Expand message |
 | `Enter` | Resume conversation |
