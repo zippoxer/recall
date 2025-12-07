@@ -268,9 +268,10 @@ fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<()> {
 fn resume_session(session: &session::Session) -> Result<()> {
     use std::os::unix::process::CommandExt;
 
-    // Change to conversation's working directory
-    if !session.cwd.is_empty() {
-        let _ = std::env::set_current_dir(&session.cwd);
+    // Change to the appropriate directory for resuming
+    let resume_cwd = session.resume_cwd();
+    if !resume_cwd.is_empty() {
+        let _ = std::env::set_current_dir(&resume_cwd);
     }
 
     let (program, args) = session.resume_command();
@@ -284,9 +285,10 @@ fn resume_session(session: &session::Session) -> Result<()> {
 
 #[cfg(not(unix))]
 fn resume_session(session: &session::Session) -> Result<()> {
-    // Change to conversation's working directory
-    if !session.cwd.is_empty() {
-        let _ = std::env::set_current_dir(&session.cwd);
+    // Change to the appropriate directory for resuming
+    let resume_cwd = session.resume_cwd();
+    if !resume_cwd.is_empty() {
+        let _ = std::env::set_current_dir(&resume_cwd);
     }
 
     let (program, args) = session.resume_command();
