@@ -525,7 +525,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
                 Span::styled(" message ", label),
             ]);
         }
-        // Show Space expand/collapse hint if terminal is wide enough and message is expandable
+        // Show Ctrl+E expand/collapse hint if terminal is wide enough and message is expandable
         if area.width > 110 && app.focused_message_expandable {
             // Check if focused message is currently expanded
             let is_expanded = if let Some(result) = app.selected_result() {
@@ -537,7 +537,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
             let action = if is_expanded { " collapse " } else { " expand " };
             spans.extend([
                 Span::styled(" │ ", dim),
-                Span::styled(" Space ", keycap),
+                Span::styled(" ^E ", keycap),
                 Span::styled(action, label),
             ]);
         }
