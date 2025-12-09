@@ -167,7 +167,7 @@ fn test_search_finds_matching_content() {
 
     assert!(!app.results.is_empty(), "Should find results for 'hello'");
     assert!(
-        app.results.iter().any(|r| r.session.id == "test-claude-123"),
+        app.results.iter().any(|r| r.session.id == "session"),
         "Should find Claude session"
     );
 }
@@ -521,7 +521,7 @@ fn test_cli_search_finds_fixture_content() {
 
     // Should find the Claude fixture session
     assert!(
-        results.iter().any(|r| r["session_id"] == "test-claude-123"),
+        results.iter().any(|r| r["session_id"] == "session"),
         "Should find Claude fixture session"
     );
 }
@@ -610,7 +610,7 @@ fn test_cli_read_returns_session() {
     let temp_dir = setup_test_env();
 
     let (stdout, _stderr, success) = run_cli(
-        &["read", "test-claude-123"],
+        &["read", "session"],
         temp_dir.path(),
     );
 
@@ -619,7 +619,7 @@ fn test_cli_read_returns_session() {
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .expect("Output should be valid JSON");
 
-    assert_eq!(json["session_id"], "test-claude-123");
+    assert_eq!(json["session_id"], "session");
     assert_eq!(json["source"], "claude");
     assert!(json["messages"].is_array());
     assert!(!json["messages"].as_array().unwrap().is_empty());
