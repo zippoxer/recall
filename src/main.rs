@@ -221,7 +221,9 @@ fn run(terminal: &mut tui::Tui, app: &mut App) -> Result<()> {
                     KeyCode::PageUp => app.focus_prev_message(),
                     KeyCode::PageDown => app.focus_next_message(),
                     KeyCode::Backspace => app.on_backspace(),
-                    KeyCode::Char(' ') => app.toggle_focused_expansion(),
+                    KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        app.toggle_focused_expansion();
+                    }
                     KeyCode::Char('/') => app.toggle_scope(),
                     KeyCode::Char(c) => app.on_char(c),
                     _ => {}
