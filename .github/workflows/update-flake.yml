@@ -1,0 +1,29 @@
+name: Update Flake
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Update flake.lock
+        run: nix flake update
+
+      - name: Create PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: 'chore(nix): update flake.lock'
+          title: 'chore(nix): update flake.lock'
+          body: |
+            Automated flake.lock update.
+
+            Run `nix flake show` to verify.
+          branch: update-flake-lock
+          delete-branch: true
