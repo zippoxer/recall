@@ -12,31 +12,36 @@ Bump type: $ARGUMENTS (patch if not specified)
 
 4. Bump version in `Cargo.toml`
 
-5. Commit and tag:
+5. Update flake.lock (if flake.nix exists):
+   ```bash
+   nix flake update
+   ```
+
+6. Commit and tag:
    ```bash
    git add -A && git commit -m "vX.Y.Z: <summary of changes>"
    git tag -a vX.Y.Z -m "vX.Y.Z: <summary of changes>"
    git push && git push --tags
    ```
 
-6. Watch GitHub Actions build:
+7. Watch GitHub Actions build:
    ```bash
    gh run watch
    ```
 
-7. Download release assets and compute SHA256:
+8. Download release assets and compute SHA256:
    ```bash
    rm -rf /tmp/release && mkdir -p /tmp/release
    gh release download vX.Y.Z -R zippoxer/recall --pattern "*.tar.gz" -D /tmp/release
    cd /tmp/release && shasum -a 256 *.tar.gz
    ```
 
-8. Update homebrew-tap (clone to ~/code/homebrew-tap if not present):
+9. Update homebrew-tap (clone to ~/code/homebrew-tap if not present):
    - Update version and SHA256 hashes in `Formula/recall.rb`
    - Commit: "Update recall to vX.Y.Z"
    - Push
 
-9. Verify Homebrew:
+10. Verify Homebrew:
    ```bash
    brew update && brew upgrade zippoxer/tap/recall
 
@@ -47,7 +52,7 @@ Bump type: $ARGUMENTS (patch if not specified)
    tmux kill-session -t test
    ```
 
-10. Verify WinGet (automated via GitHub Actions):
+11. Verify WinGet (automated via GitHub Actions):
     - Check for PR at https://github.com/microsoft/winget-pkgs/pulls?q=is:pr+zippoxer.recall
     - The `publish-winget` job automatically submits a PR to winget-pkgs for non-prerelease versions
     - PRs are typically merged within 24-48 hours by the winget-pkgs maintainers

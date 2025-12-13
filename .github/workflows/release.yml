@@ -110,3 +110,53 @@ jobs:
           identifier: zippoxer.recall
           installers-regex: '\.zip$'
           token: ${{ secrets.WINGET_TOKEN }}
+
+  publish-homebrew:
+    name: Publish to Homebrew
+    needs: release
+    runs-on: ubuntu-latest
+    # Skip pre-release versions (e.g., v0.2.1-rc1)
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      - name: Download release assets
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p assets
+          cd assets
+          gh release download "$GITHUB_REF_NAME" -R zippoxer/recall \
+            --pattern "recall-macos-intel.tar.gz" \
+            --pattern "recall-macos-arm64.tar.gz" \
+            --pattern "recall-linux-x86_64.tar.gz"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute SHA256 hashes
+        id: hashes
+        run: |
+          cd assets
+          echo "macos_intel=$(sha256sum recall-macos-intel.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "macos_arm64=$(sha256sum recall-macos-arm64.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+          echo "linux_x86_64=$(sha256sum recall-linux-x86_64.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+
+      - name: Update Homebrew tap
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA_INTEL="${{ steps.hashes.outputs.macos_intel }}"
+          SHA_ARM="${{ steps.hashes.outputs.macos_arm64 }}"
+          SHA_LINUX="${{ steps.hashes.outputs.linux_x86_64 }}"
+
+          git clone https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/zippoxer/homebrew-tap.git
+          cd homebrew-tap
+
+          # Update version and SHA256 hashes in the formula
+          sed -i "s/version \".*\"/version \"$VERSION\"/" Formula/recall.rb
+          sed -i "0,/sha256 \"[a-f0-9]*\"/s//sha256 \"$SHA_INTEL\"/" Formula/recall.rb
+          sed -i "0,/sha256 \"[a-f0-9]*\"/s//sha256 \"$SHA_ARM\"/" Formula/recall.rb
+          sed -i "0,/sha256 \"[a-f0-9]*\"/s//sha256 \"$SHA_LINUX\"/" Formula/recall.rb
+
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/recall.rb
+          git commit -m "Update recall to $VERSION"
+          git push
