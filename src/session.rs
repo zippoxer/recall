@@ -134,7 +134,7 @@ impl Session {
             ),
             SessionSource::OpenCode => (
                 "opencode".to_string(),
-                vec!["run".to_string(), "-s".to_string(), self.id.clone()],
+                vec!["--session".to_string(), self.id.clone()],
             ),
         }
     }
