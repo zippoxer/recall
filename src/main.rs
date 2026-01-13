@@ -84,8 +84,28 @@ enum Command {
 
     /// Read a full conversation by session ID and output JSON
     Read {
-        /// Session ID to read
-        session_id: String,
+        /// Session ID or selector (e.g., abc123:5.2 for message 5, tool 2)
+        selector: String,
+
+        /// Messages of context after target
+        #[arg(short = 'A', long)]
+        after: Option<usize>,
+
+        /// Messages of context before target
+        #[arg(short = 'B', long)]
+        before: Option<usize>,
+
+        /// Messages of context before and after
+        #[arg(short = 'C', long = "context")]
+        context: Option<usize>,
+
+        /// Disable truncation, show full tool outputs
+        #[arg(long)]
+        full: bool,
+
+        /// Human-readable output format (default is JSON)
+        #[arg(long)]
+        pretty: bool,
     },
 }
 
@@ -131,7 +151,14 @@ fn main() -> Result<()> {
             let source = parse_source(&source)?;
             cli::run_list(limit, source, since, until, cwd)
         }
-        Some(Command::Read { session_id }) => cli::run_read(&session_id),
+        Some(Command::Read {
+            selector,
+            after,
+            before,
+            context,
+            full,
+            pretty,
+        }) => cli::run_read(&selector, after, before, context, full, pretty),
         None => {
             // Interactive TUI mode
             let initial_query = cli.query.join(" ");

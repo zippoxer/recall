@@ -128,6 +128,7 @@ impl SessionParser for CodexParser {
                                     role,
                                     content,
                                     timestamp,
+                                    tool_calls: Vec::new(), // TODO: Extract tool calls for Codex
                                 });
 
                                 // Update latest timestamp

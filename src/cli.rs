@@ -6,7 +6,9 @@ use recall::{
     index::{ensure_index_fresh, SessionIndex},
     parser,
     session::{ListOutput, Message, SearchOutput, SearchResultOutput, SessionSource},
+    DISABLE_TRUNCATION,
 };
+use std::sync::atomic::Ordering;
 
 const DEFAULT_MESSAGES_PER_SESSION: usize = 5;
 
@@ -254,22 +256,319 @@ pub fn run_list(
     Ok(())
 }
 
-/// Run the read subcommand
-pub fn run_read(session_id: &str) -> Result<()> {
+/// Run the read subcommand with selector support
+#[allow(clippy::too_many_arguments)]
+pub fn run_read(
+    selector_str: &str,
+    after: Option<usize>,
+    before: Option<usize>,
+    context: Option<usize>,
+    full: bool,
+    pretty: bool,
+) -> Result<()> {
+    use recall::selector::{parse_selector, MessageSelector, Selector};
+    use recall::session::{ReadOutput, ToolStatus};
+
     let index = SessionIndex::open_default()?;
     ensure_index_fresh(&index)?;
 
+    // Parse the selector
+    let selector = parse_selector(selector_str)
+        .map_err(|e| anyhow::anyhow!("Invalid selector: {}", e))?;
+
     // Find the session by ID
+    let session_id = selector.session_id();
     let file_path = index
         .get_by_id(session_id)?
         .ok_or_else(|| anyhow::anyhow!("Session not found: {}", session_id))?;
 
+    // Set truncation flag before parsing
+    if full {
+        DISABLE_TRUNCATION.store(true, Ordering::SeqCst);
+    }
+
     // Parse full session
     let session = parser::parse_session_file(&file_path)?;
-    let output = session.to_read_output();
 
-    println!("{}", serde_json::to_string_pretty(&output)?);
+    // Reset truncation flag after parsing
+    if full {
+        DISABLE_TRUNCATION.store(false, Ordering::SeqCst);
+    }
+
+    // Calculate context bounds
+    let before_ctx = before.or(context).unwrap_or(0);
+    let after_ctx = after.or(context).unwrap_or(0);
+
+    // Apply selector filtering and get messages with their IDs
+    let (selected_messages, focus_range): (Vec<(usize, Message)>, std::ops::Range<usize>) =
+        match &selector {
+            Selector::Session { .. } => {
+                // Return all messages
+                let msgs: Vec<_> = session
+                    .messages
+                    .iter()
+                    .enumerate()
+                    .map(|(i, m)| (i + 1, m.clone()))
+                    .collect();
+                let range = if msgs.is_empty() { 0..0 } else { 0..msgs.len() };
+                (msgs, range)
+            }
+            Selector::Message { message, .. } => {
+                let total = session.messages.len();
+
+                match message {
+                    MessageSelector::Errors => {
+                        // Filter to messages with error tool calls
+                        let error_indices: Vec<usize> = session
+                            .messages
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, m)| {
+                                m.tool_calls.iter().any(|t| t.status == ToolStatus::Error)
+                            })
+                            .map(|(i, _)| i)
+                            .collect();
+
+                        if error_indices.is_empty() {
+                            // Return empty
+                            (Vec::new(), 0..0)
+                        } else {
+                            // Collect with context
+                            let mut indices: std::collections::BTreeSet<usize> =
+                                std::collections::BTreeSet::new();
+                            for idx in &error_indices {
+                                let start = idx.saturating_sub(before_ctx);
+                                let end = (*idx + 1 + after_ctx).min(total);
+                                for i in start..end {
+                                    indices.insert(i);
+                                }
+                            }
+
+                            let msgs: Vec<_> = indices
+                                .into_iter()
+                                .map(|i| (i + 1, session.messages[i].clone()))
+                                .collect();
+                            let range = 0..msgs.len();
+                            (msgs, range)
+                        }
+                    }
+                    _ => {
+                        let (start, end, focus_start, focus_end) = match message {
+                            MessageSelector::Single(idx) => {
+                                let idx = *idx;
+                                if idx == 0 || idx > total {
+                                    return Err(anyhow::anyhow!(
+                                        "Message {} not found (session has {} messages)",
+                                        idx,
+                                        total
+                                    ));
+                                }
+                                let start = idx.saturating_sub(1 + before_ctx);
+                                let end = (idx + after_ctx).min(total);
+                                (start, end, idx - 1 - start, idx - start)
+                            }
+                            MessageSelector::Range(s, e) => {
+                                let s = *s;
+                                let e = *e;
+                                if s == 0 || e == 0 || s > total || e > total || s > e {
+                                    return Err(anyhow::anyhow!(
+                                        "Invalid range {}-{} (session has {} messages)",
+                                        s,
+                                        e,
+                                        total
+                                    ));
+                                }
+                                let start = s.saturating_sub(1 + before_ctx);
+                                let end = (e + after_ctx).min(total);
+                                (start, end, s - 1 - start, e - start)
+                            }
+                            MessageSelector::Last(n) => {
+                                let n = *n;
+                                let start = total.saturating_sub(n + before_ctx);
+                                let end = total;
+                                let focus_start = if total >= n { total - n - start } else { 0 };
+                                (start, end, focus_start, end - start)
+                            }
+                            MessageSelector::Errors => unreachable!(),
+                        };
+
+                        let msgs: Vec<_> = (start..end)
+                            .map(|i| (i + 1, session.messages[i].clone()))
+                            .collect();
+                        (msgs, focus_start..focus_end)
+                    }
+                }
+            }
+            Selector::Tool {
+                message_idx,
+                tool_idx,
+                ..
+            } => {
+                let msg_idx = *message_idx;
+                let tool_idx = *tool_idx;
+                let total = session.messages.len();
+
+                if msg_idx == 0 || msg_idx > total {
+                    return Err(anyhow::anyhow!(
+                        "Message {} not found (session has {} messages)",
+                        msg_idx,
+                        total
+                    ));
+                }
+
+                let msg = &session.messages[msg_idx - 1];
+                let tool_count = msg.tool_calls.len();
+
+                if tool_idx == 0 || tool_idx > tool_count {
+                    return Err(anyhow::anyhow!(
+                        "Tool {} not found in message {} ({} tool calls)",
+                        tool_idx,
+                        msg_idx,
+                        tool_count
+                    ));
+                }
+
+                let start = msg_idx.saturating_sub(1 + before_ctx);
+                let end = (msg_idx + after_ctx).min(total);
+
+                let msgs: Vec<_> = (start..end)
+                    .map(|i| (i + 1, session.messages[i].clone()))
+                    .collect();
+                (msgs, (msg_idx - 1 - start)..(msg_idx - start))
+            }
+        };
+
+    // Assign display IDs to tool calls (e.g., "2.1", "2.2") and keep message numbers
+    let messages_with_nums: Vec<(usize, Message)> = selected_messages
+        .into_iter()
+        .map(|(msg_num, mut msg)| {
+            for (tool_idx, tool) in msg.tool_calls.iter_mut().enumerate() {
+                tool.id = Some(format!("{}.{}", msg_num, tool_idx + 1));
+            }
+            (msg_num, msg)
+        })
+        .collect();
+
+    // Output
+    if pretty {
+        print_pretty(&session, &messages_with_nums, &focus_range);
+    } else {
+        let (cmd, args) = session.resume_command();
+        let resume_str = std::iter::once(cmd)
+            .chain(args)
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let messages: Vec<Message> = messages_with_nums.into_iter().map(|(_, m)| m).collect();
+        let output = ReadOutput {
+            session_id: session.id.clone(),
+            source: session.source,
+            cwd: session.cwd.clone(),
+            timestamp: session.timestamp,
+            messages,
+            resume_command: resume_str,
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    }
+
     Ok(())
+}
+
+/// Print session in human-readable pretty format
+fn print_pretty(
+    session: &recall::Session,
+    messages: &[(usize, Message)],
+    _focus_range: &std::ops::Range<usize>, // Could be used for highlighting in future
+) {
+    use recall::session::ToolStatus;
+
+    // Header
+    println!(
+        "─── {} ({}, {}, {}) ───",
+        session.id,
+        session.timestamp.format("%Y-%m-%d"),
+        session.source.as_str(),
+        session.cwd
+    );
+    println!();
+
+    // Messages
+    for (msg_num, msg) in messages.iter() {
+        let role = msg.role.as_str();
+
+        // Print message header
+        println!("{:>5} │ {}: {}", msg_num, role, first_line(&msg.content));
+
+        // Print rest of content if multi-line
+        for line in msg.content.lines().skip(1).take(5) {
+            println!("      │ {}", line);
+        }
+        if msg.content.lines().count() > 6 {
+            println!("      │ ...");
+        }
+
+        // Print tool calls
+        for tool in &msg.tool_calls {
+            let id = tool.id.as_deref().unwrap_or("?");
+            let status_icon = match tool.status {
+                ToolStatus::Success => "✓",
+                ToolStatus::Error => "✗",
+                ToolStatus::Pending => "…",
+            };
+            let duration = tool
+                .duration_ms
+                .map(|d| format!(" ({}ms)", d))
+                .unwrap_or_default();
+
+            println!();
+            println!("{:>5} │   {} {}{}", id, status_icon, tool.name, duration);
+
+            // Print tool input summary
+            if let Some(cmd) = tool.input.get("command").and_then(|v| v.as_str()) {
+                let cmd_short = if cmd.len() > 60 {
+                    format!("{}...", &cmd[..57])
+                } else {
+                    cmd.to_string()
+                };
+                println!("      │   $ {}", cmd_short);
+            } else if let Some(path) = tool.input.get("file_path").and_then(|v| v.as_str()) {
+                println!("      │   {}", path);
+            }
+
+            // Print output summary (if exists)
+            if let Some(output) = &tool.output {
+                let first = first_line(&output.content);
+                println!("      │   → {}", first);
+
+                if output.truncated {
+                    println!(
+                        "      │     [...truncated {:.1}kb...]",
+                        output.total_bytes as f64 / 1024.0
+                    );
+                }
+            }
+        }
+        println!("      │");
+    }
+
+    // Footer
+    let (cmd, args) = session.resume_command();
+    let resume_str = std::iter::once(cmd)
+        .chain(args)
+        .collect::<Vec<_>>()
+        .join(" ");
+    println!();
+    println!("─── resume: {} ───", resume_str);
+}
+
+/// Get the first line of a string (truncated if needed)
+fn first_line(s: &str) -> String {
+    let line = s.lines().next().unwrap_or("");
+    if line.len() > 80 {
+        format!("{}...", &line[..77])
+    } else {
+        line.to_string()
+    }
 }
 
 /// Parse a human-friendly time string into a DateTime

@@ -13,7 +13,7 @@ use anyhow::Result;
 use std::path::Path;
 
 /// Join consecutive messages from the same role into single messages.
-/// Uses the latest timestamp when joining.
+/// Uses the latest timestamp when joining. Merges tool calls from all joined messages.
 pub fn join_consecutive_messages(messages: Vec<Message>) -> Vec<Message> {
     messages.into_iter().fold(Vec::new(), |mut acc, msg| {
         if let Some(last) = acc.last_mut() {
@@ -21,6 +21,7 @@ pub fn join_consecutive_messages(messages: Vec<Message>) -> Vec<Message> {
                 last.content.push_str("\n\n");
                 last.content.push_str(&msg.content);
                 last.timestamp = msg.timestamp; // use latest
+                last.tool_calls.extend(msg.tool_calls); // merge tool calls
                 return acc;
             }
         }
@@ -144,13 +145,22 @@ mod tests {
     use crate::session::Role;
     use chrono::Utc;
 
+    fn msg(role: Role, content: &str, timestamp: chrono::DateTime<Utc>) -> Message {
+        Message {
+            role,
+            content: content.to_string(),
+            timestamp,
+            tool_calls: Vec::new(),
+        }
+    }
+
     #[test]
     fn test_join_consecutive_messages_different_roles() {
         let now = Utc::now();
         let messages = vec![
-            Message { role: Role::User, content: "Hello".to_string(), timestamp: now },
-            Message { role: Role::Assistant, content: "Hi".to_string(), timestamp: now },
-            Message { role: Role::User, content: "Bye".to_string(), timestamp: now },
+            msg(Role::User, "Hello", now),
+            msg(Role::Assistant, "Hi", now),
+            msg(Role::User, "Bye", now),
         ];
         let joined = join_consecutive_messages(messages);
         assert_eq!(joined.len(), 3);
@@ -161,9 +171,9 @@ mod tests {
         let t1 = Utc::now();
         let t2 = t1 + chrono::Duration::seconds(10);
         let messages = vec![
-            Message { role: Role::User, content: "Part 1".to_string(), timestamp: t1 },
-            Message { role: Role::User, content: "Part 2".to_string(), timestamp: t2 },
-            Message { role: Role::Assistant, content: "Response".to_string(), timestamp: t2 },
+            msg(Role::User, "Part 1", t1),
+            msg(Role::User, "Part 2", t2),
+            msg(Role::Assistant, "Response", t2),
         ];
         let joined = join_consecutive_messages(messages);
         assert_eq!(joined.len(), 2);
@@ -176,9 +186,9 @@ mod tests {
     fn test_join_consecutive_messages_multiple_same_role() {
         let now = Utc::now();
         let messages = vec![
-            Message { role: Role::Assistant, content: "A".to_string(), timestamp: now },
-            Message { role: Role::Assistant, content: "B".to_string(), timestamp: now },
-            Message { role: Role::Assistant, content: "C".to_string(), timestamp: now },
+            msg(Role::Assistant, "A", now),
+            msg(Role::Assistant, "B", now),
+            msg(Role::Assistant, "C", now),
         ];
         let joined = join_consecutive_messages(messages);
         assert_eq!(joined.len(), 1);

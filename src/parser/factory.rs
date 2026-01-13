@@ -94,6 +94,7 @@ impl SessionParser for FactoryParser {
                                 role,
                                 content,
                                 timestamp,
+                                tool_calls: Vec::new(), // TODO: Extract tool calls for Factory
                             });
                         }
                     }

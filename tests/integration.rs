@@ -732,3 +732,399 @@ fn test_cli_list_with_cwd_filter() {
         assert_eq!(session["cwd"], "/test/project");
     }
 }
+
+// =============================================================================
+// CLI Tests for Selectors and Tool Calls
+// =============================================================================
+
+#[test]
+fn test_cli_read_with_tool_calls() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456"],
+        temp_dir.path(),
+    );
+
+    assert!(success, "CLI read should succeed");
+
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .expect("Output should be valid JSON");
+
+    assert_eq!(json["session_id"], "test-with-tools-456");
+
+    let messages = json["messages"].as_array().unwrap();
+
+    // Message 2 (assistant) should have a tool call
+    let msg2 = &messages[1];
+    assert_eq!(msg2["role"], "assistant");
+    let tool_calls = msg2["tool_calls"].as_array().unwrap();
+    assert!(!tool_calls.is_empty(), "Should have tool calls");
+
+    // Check first tool call structure
+    let tool = &tool_calls[0];
+    assert_eq!(tool["name"], "Bash");
+    assert_eq!(tool["status"], "success");
+    assert!(tool["duration_ms"].is_number());
+    assert!(tool["output"]["content"].is_string());
+}
+
+#[test]
+fn test_cli_read_message_selector_single() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Get message 2 only
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456:2"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Should have only message 2
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["role"], "assistant");
+}
+
+#[test]
+fn test_cli_read_message_selector_range() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Get messages 2-4
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456:2-4"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Should have messages 2, 3, 4
+    assert_eq!(messages.len(), 3);
+}
+
+#[test]
+fn test_cli_read_message_selector_last() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Get last 2 messages
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456:-2"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Should have exactly 2 messages
+    assert_eq!(messages.len(), 2);
+}
+
+#[test]
+fn test_cli_read_message_selector_errors() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Get only messages with error tool calls
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456:errors"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Should find the message with the error tool call
+    let has_error = messages.iter().any(|m| {
+        m["tool_calls"]
+            .as_array()
+            .map(|calls| calls.iter().any(|c| c["status"] == "error"))
+            .unwrap_or(false)
+    });
+    assert!(has_error, "Should include message with error tool call");
+}
+
+#[test]
+fn test_cli_read_tool_selector() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Get specific tool call (message 2, tool 1)
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456:2.1"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Should return the message containing the tool
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0]["role"], "assistant");
+
+    let tool_calls = messages[0]["tool_calls"].as_array().unwrap();
+    assert!(!tool_calls.is_empty());
+    assert_eq!(tool_calls[0]["name"], "Bash");
+}
+
+#[test]
+fn test_cli_read_context_after() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Get message 2 with 1 message after
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456:2", "-A", "1"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Should have messages 2 and 3
+    assert_eq!(messages.len(), 2);
+}
+
+#[test]
+fn test_cli_read_context_before() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Get message 3 with 1 message before
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456:3", "-B", "1"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Should have messages 2 and 3
+    assert_eq!(messages.len(), 2);
+}
+
+#[test]
+fn test_cli_read_context_both() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Get message 3 with 1 message of context on each side
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456:3", "-C", "1"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Should have messages 2, 3, and 4
+    assert_eq!(messages.len(), 3);
+}
+
+#[test]
+fn test_cli_read_pretty_output() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456", "--pretty"],
+        temp_dir.path(),
+    );
+
+    assert!(success, "CLI read --pretty should succeed");
+
+    // Pretty output should have gutter format
+    assert!(stdout.contains("│"), "Should have gutter separator");
+    assert!(stdout.contains("test-with-tools-456"), "Should have session ID in header");
+    assert!(stdout.contains("resume:"), "Should have resume footer");
+
+    // Should show tool call status icons
+    assert!(stdout.contains("✓") || stdout.contains("✗"), "Should have status icons");
+}
+
+#[test]
+fn test_cli_read_invalid_selector() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Invalid message index
+    let (_stdout, stderr, success) = run_cli(
+        &["read", "test-with-tools-456:999"],
+        temp_dir.path(),
+    );
+
+    assert!(!success, "Should fail for invalid message index");
+    assert!(stderr.contains("not found"), "Should show error message");
+}
+
+#[test]
+fn test_cli_read_invalid_tool_selector() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Invalid tool index
+    let (_stdout, stderr, success) = run_cli(
+        &["read", "test-with-tools-456:2.99"],
+        temp_dir.path(),
+    );
+
+    assert!(!success, "Should fail for invalid tool index");
+    assert!(stderr.contains("Tool"), "Should show tool error message");
+}
+
+#[test]
+fn test_cli_read_tool_output_content() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Find the Bash tool call and verify output
+    for msg in messages {
+        if let Some(tool_calls) = msg["tool_calls"].as_array() {
+            for tool in tool_calls {
+                if tool["name"] == "Bash" {
+                    let output = &tool["output"];
+                    assert!(output["content"].as_str().unwrap().contains("main.rs"),
+                        "Bash output should contain ls result");
+                    assert_eq!(output["truncated"], false);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn test_cli_read_error_tool_call() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-with-tools-456"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Find the error tool call
+    let mut found_error = false;
+    for msg in messages {
+        if let Some(tool_calls) = msg["tool_calls"].as_array() {
+            for tool in tool_calls {
+                if tool["status"] == "error" {
+                    found_error = true;
+                    assert!(tool["output"]["content"].as_str().unwrap().contains("No such file"),
+                        "Error output should contain error message");
+                }
+            }
+        }
+    }
+    assert!(found_error, "Should have found error tool call");
+}
+
+#[test]
+fn test_cli_read_truncation() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // Without --full, large output should be truncated
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-large-output-789"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Find the tool call with large output
+    let mut found_truncated = false;
+    for msg in messages {
+        if let Some(tool_calls) = msg["tool_calls"].as_array() {
+            for tool in tool_calls {
+                if let Some(output) = tool.get("output") {
+                    if output["truncated"] == true {
+                        found_truncated = true;
+                        let content = output["content"].as_str().unwrap();
+                        assert!(content.contains("START_MARKER"), "Should keep start");
+                        assert!(content.contains("END_MARKER"), "Should keep end");
+                        assert!(content.contains("truncated"), "Should have truncation marker");
+                        // Middle should be truncated
+                        assert!(!content.contains("MIDDLE_MARKER"), "Middle should be truncated");
+                    }
+                }
+            }
+        }
+    }
+    assert!(found_truncated, "Should have found truncated tool output");
+}
+
+#[test]
+fn test_cli_read_full_flag() {
+    let _lock = lock_test();
+    let temp_dir = setup_test_env();
+
+    // With --full, large output should NOT be truncated
+    let (stdout, _stderr, success) = run_cli(
+        &["read", "test-large-output-789", "--full"],
+        temp_dir.path(),
+    );
+
+    assert!(success);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let messages = json["messages"].as_array().unwrap();
+
+    // Find the tool call with large output
+    let mut found_full = false;
+    for msg in messages {
+        if let Some(tool_calls) = msg["tool_calls"].as_array() {
+            for tool in tool_calls {
+                if let Some(output) = tool.get("output") {
+                    let content = output["content"].as_str().unwrap();
+                    if content.contains("START_MARKER") {
+                        found_full = true;
+                        assert_eq!(output["truncated"], false, "Should not be truncated with --full");
+                        assert!(content.contains("MIDDLE_MARKER"), "Should contain full middle content");
+                        assert!(content.contains("END_MARKER"), "Should contain end");
+                        assert!(!content.contains("[...truncated"), "Should not have truncation marker");
+                    }
+                }
+            }
+        }
+    }
+    assert!(found_full, "Should have found full tool output");
+}

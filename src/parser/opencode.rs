@@ -148,6 +148,7 @@ impl SessionParser for OpenCodeParser {
                         role,
                         content,
                         timestamp,
+                        tool_calls: Vec::new(), // TODO: Extract tool calls for OpenCode
                     });
                 }
             }
