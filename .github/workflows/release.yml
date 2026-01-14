@@ -148,11 +148,13 @@ jobs:
           git clone https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/zippoxer/homebrew-tap.git
           cd homebrew-tap
 
-          # Update version and SHA256 hashes in the formula
+          # Update version
           sed -i "s/version \".*\"/version \"$VERSION\"/" Formula/recall.rb
-          sed -i "0,/sha256 \"[a-f0-9]*\"/s//sha256 \"$SHA_INTEL\"/" Formula/recall.rb
-          sed -i "0,/sha256 \"[a-f0-9]*\"/s//sha256 \"$SHA_ARM\"/" Formula/recall.rb
-          sed -i "0,/sha256 \"[a-f0-9]*\"/s//sha256 \"$SHA_LINUX\"/" Formula/recall.rb
+
+          # Update SHA256 hashes by matching the URL pattern (more reliable than positional matching)
+          perl -i -0777 -pe "s|(recall-macos-intel\.tar\.gz\"\n\s+sha256 \")[a-f0-9]+|\${1}$SHA_INTEL|" Formula/recall.rb
+          perl -i -0777 -pe "s|(recall-macos-arm64\.tar\.gz\"\n\s+sha256 \")[a-f0-9]+|\${1}$SHA_ARM|" Formula/recall.rb
+          perl -i -0777 -pe "s|(recall-linux-x86_64\.tar\.gz\"\n\s+sha256 \")[a-f0-9]+|\${1}$SHA_LINUX|" Formula/recall.rb
 
           # Commit and push
           git config user.name "github-actions[bot]"

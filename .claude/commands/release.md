@@ -36,10 +36,17 @@ Bump type: $ARGUMENTS (patch if not specified)
    cd /tmp/release && shasum -a 256 *.tar.gz
    ```
 
-9. Update homebrew-tap (clone to ~/code/homebrew-tap if not present):
-   - Update version and SHA256 hashes in `Formula/recall.rb`
-   - Commit: "Update recall to vX.Y.Z"
-   - Push
+9. Verify homebrew-tap was updated correctly by CI:
+   ```bash
+   # Fetch the formula and verify hashes match
+   gh api repos/zippoxer/homebrew-tap/contents/Formula/recall.rb --jq '.content' | base64 -d
+   ```
+   Compare the SHA256 hashes in the formula with the hashes from step 8:
+   - `recall-macos-intel.tar.gz` hash should match `on_intel` block
+   - `recall-macos-arm64.tar.gz` hash should match `on_arm` block
+   - `recall-linux-x86_64.tar.gz` hash should match `on_linux` block
+
+   If hashes don't match, fix manually in ~/code/homebrew-tap (clone if not present).
 
 10. Verify Homebrew:
    ```bash
