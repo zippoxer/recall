@@ -96,6 +96,35 @@ impl Session {
             .unwrap_or(&self.cwd)
     }
 
+    /// Get the directory to cd into before resuming the session.
+    /// For Claude Code: decodes the project folder from file_path since sessions
+    /// are stored in project-specific folders, not the cwd recorded in messages.
+    /// For other sources: uses the cwd field.
+    pub fn resume_cwd(&self) -> String {
+        match self.source {
+            SessionSource::ClaudeCode => {
+                // Extract project folder from file_path: ~/.claude/projects/<project>/session.jsonl
+                // The project folder encodes the original cwd:
+                // "-Users-bob--config-nvim" -> "/Users/bob/.config/nvim"
+                if let Some(project_dir) = self.file_path.parent() {
+                    if let Some(project_name) = project_dir.file_name().and_then(|s| s.to_str()) {
+                        // Decode: "--" -> "/." (hidden dir), "-" -> "/"
+                        let decoded = project_name
+                            .replace("--", "\x00")  // Temporarily mark hidden dirs
+                            .replace('-', "/")
+                            .replace('\x00', "/.");
+                        if std::path::Path::new(&decoded).exists() {
+                            return decoded;
+                        }
+                    }
+                }
+                // Fall back to cwd if decoding fails
+                self.cwd.clone()
+            }
+            _ => self.cwd.clone(),
+        }
+    }
+
     /// Get the resume command for this session
     /// Checks RECALL_CLAUDE_CMD / RECALL_CODEX_CMD / RECALL_FACTORY_CMD env vars first, falls back to defaults
     /// Env var format: "program arg1 arg2 {id}" where {id} is replaced with session ID

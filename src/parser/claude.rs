@@ -12,8 +12,6 @@ use super::{join_consecutive_messages, SessionParser};
 struct ClaudeLine {
     #[serde(rename = "type")]
     entry_type: String,
-    #[serde(rename = "sessionId")]
-    session_id: Option<String>,
     cwd: Option<String>,
     #[serde(rename = "gitBranch")]
     git_branch: Option<String>,
@@ -50,7 +48,13 @@ impl SessionParser for ClaudeParser {
         let file = File::open(path).context("Failed to open file")?;
         let reader = BufReader::with_capacity(64 * 1024, file);
 
-        let mut session_id: Option<String> = None;
+        // Use filename as session ID (what Claude Code expects for --resume)
+        let session_id = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
         let mut cwd: Option<String> = None;
         let mut git_branch: Option<String> = None;
         let mut latest_timestamp: Option<DateTime<Utc>> = None;
@@ -83,9 +87,6 @@ impl SessionParser for ClaudeParser {
             }
 
             // Extract session metadata from the first valid message
-            if session_id.is_none() {
-                session_id = entry.session_id.clone();
-            }
             if cwd.is_none() {
                 cwd = entry.cwd.clone();
             }
@@ -134,14 +135,6 @@ impl SessionParser for ClaudeParser {
                 });
             }
         }
-
-        // Fall back to filename for session ID if not found
-        let session_id = session_id.unwrap_or_else(|| {
-            path.file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown")
-                .to_string()
-        });
 
         Ok(Session {
             id: session_id,
